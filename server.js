@@ -160,12 +160,6 @@ async function getPortfolioSummary() {
 
     const totalSpent = tradableRows.reduce((sum, r) => sum + r.spentValue, 0);
 
-    console.log(`[Header] avg_cost=${avgCostInfo.index} | qty=${qtyInfo.index} | total_spent=${totalSpentInfo.index}`);
-    console.log(`[Header Row] ${headers.map(h => String(h || '').trim()).join(' | ')}`);
-    if (dataRows.length) {
-        console.log(`[Sample Row] ${dataRows[0].map(v => String(v || '').trim()).join(' | ')}`);
-    }
-
     return tradableRows.map(r => {
         const symbol = r.symbol;
         const type = r.type;
@@ -184,15 +178,6 @@ async function getPortfolioSummary() {
         } else {
             target_alloc = 0;
         }
-
-        console.log(`[Data] ${symbol} | Real AvgCost: ${avg_cost} | Target: ${target_alloc*100}%`);
-
-        const gap = ((target_alloc - current_alloc) * 100).toFixed(2);
-        console.log(`-----------------------------------`);
-        console.log(`📊 Asset: ${symbol}`);
-        console.log(`   └─ Current (Spent): ${(current_alloc * 100).toFixed(2)}%`);
-        console.log(`   └─ Target:  ${(target_alloc * 100).toFixed(2)}%`);
-        console.log(`   └─ Gap:     ${gap}% ${gap > 5 ? '🔥 (Bonus Score Active)' : ''}`);
 
         return { symbol, avg_cost, current_alloc, target_alloc, qty };
     }).filter(i => i.symbol);
