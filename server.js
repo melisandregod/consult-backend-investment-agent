@@ -8,7 +8,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const yahooFinance = new YahooFinance({ suppressNotices: ["ripHistorical","yahooSurvey"] });
+const yahooFinance = new YahooFinance({
+    suppressNotices: ["ripHistorical", "yahooSurvey"],
+    validation: {
+        // Keep schema validation enabled, but avoid noisy logs from intermittent Yahoo payload issues.
+        logErrors: false,
+    },
+});
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -36,6 +42,73 @@ const isCryptoSymbol = (symbol = '') => {
     const s = symbol.trim().toUpperCase();
     return CRYPTO_SYMBOLS.includes(s) || s.endsWith('-USD');
 };
+
+const toFiniteNumber = (value) => {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+};
+
+const normalizeHistoryRows = (rows) => {
+    if (!Array.isArray(rows)) return [];
+    return rows.filter(r => r && r.date).map(r => ({
+        ...r,
+        close: toFiniteNumber(r.close),
+        adjclose: toFiniteNumber(r.adjclose),
+        open: toFiniteNumber(r.open),
+        high: toFiniteNumber(r.high),
+        low: toFiniteNumber(r.low),
+        volume: toFiniteNumber(r.volume)
+    }));
+};
+
+const extractCloseSeries = (rows) => {
+    return rows
+        .map(r => toFiniteNumber(r.close ?? r.adjclose ?? r.open))
+        .filter(v => v != null);
+};
+
+const getClosedRows = (rows) => {
+    if (!Array.isArray(rows)) return [];
+    // Use bars that have a settled close/adjclose to avoid partial-day distortions.
+    return rows.filter(r => toFiniteNumber(r?.close ?? r?.adjclose) != null);
+};
+
+async function getChartHistorySafe(symbol, queryOptions) {
+    const chartResult = await yahooFinance.chart(
+        symbol,
+        { ...queryOptions, return: 'array' },
+        { validateResult: false }
+    );
+    return normalizeHistoryRows(chartResult?.quotes || []);
+}
+
+async function getHistoricalSafe(symbol, queryOptions) {
+    try {
+        // Prefer chart() because historical() currently logs noisy null-row diagnostics for some symbols.
+        const chartRows = await getChartHistorySafe(symbol, queryOptions);
+        if (chartRows.length > 0) return chartRows;
+    } catch (error) {
+        // Continue to historical fallback below.
+    }
+
+    try {
+        return normalizeHistoryRows(await yahooFinance.historical(symbol, queryOptions));
+    } catch (error) {
+        // Fallback to unvalidated payload to tolerate Yahoo schema drift and edge-case payloads.
+        const raw = await yahooFinance.historical(symbol, queryOptions, { validateResult: false });
+        return normalizeHistoryRows(raw);
+    }
+}
+
+async function getQuoteSafe(symbol) {
+    try {
+        return await yahooFinance.quote(symbol);
+    } catch (error) {
+        // Fallback to unvalidated payload to tolerate Yahoo schema drift and edge-case payloads.
+        return await yahooFinance.quote(symbol, undefined, { validateResult: false });
+    }
+}
 
 // Helper: ล้าง String ให้เป็นตัวเลข
 const cleanNum = (val) => {
@@ -65,7 +138,27 @@ async function getPortfolioSummary() {
     const avgCostInfo = findHeaderIndex(['avg cost', 'average cost', 'avg_cost', 'average_cost'], 4);
     const qtyInfo = findHeaderIndex(['total_qty', 'qty', 'quantity', 'total qty'], 2);
     const totalSpentInfo = findHeaderIndex(['total spent', 'total_spent', 'total_spent_usd', 'spent'], 3);
-    const totalSpent = dataRows.reduce((sum, r) => sum + cleanNum(r[totalSpentInfo.index]), 0);
+
+    const parsedRows = dataRows.map(r => {
+        const symbol = String(r[0] || '').trim();
+        const symbolKey = symbol.toUpperCase();
+        const type = String(r[1] || '').trim().toUpperCase();
+        const avg_cost = cleanNum(r[avgCostInfo.index]);
+        const qty = cleanNum(r[qtyInfo.index]);
+        const spentValue = cleanNum(r[totalSpentInfo.index]);
+        return { symbol, symbolKey, type, avg_cost, qty, spentValue };
+    });
+
+    const tradableRows = parsedRows.filter(row => {
+        if (!row.symbolKey) return false;
+        if (row.symbolKey === 'TOTAL' || row.symbolKey === 'THB') return false;
+        const isStockType = row.type === 'STOCK' || row.type === 'EQUITY' || row.type === 'US_STOCK';
+        const isCryptoType = row.type === 'CRYPTO';
+        const isKnownCrypto = TARGET_CRYPTO_SYMBOLS.includes(row.symbolKey) || row.symbolKey.endsWith('-USD');
+        return isStockType || isCryptoType || isKnownCrypto;
+    });
+
+    const totalSpent = tradableRows.reduce((sum, r) => sum + r.spentValue, 0);
 
     console.log(`[Header] avg_cost=${avgCostInfo.index} | qty=${qtyInfo.index} | total_spent=${totalSpentInfo.index}`);
     console.log(`[Header Row] ${headers.map(h => String(h || '').trim()).join(' | ')}`);
@@ -73,17 +166,16 @@ async function getPortfolioSummary() {
         console.log(`[Sample Row] ${dataRows[0].map(v => String(v || '').trim()).join(' | ')}`);
     }
 
-    return dataRows.map(r => {
-        const symbol = r[0];
-        const type = String(r[1] || '').trim().toUpperCase();
-        // 🔴 แก้ไข Index ตรงนี้ให้ตรงกับไฟล์ CSV
-        const avg_cost = cleanNum(r[avgCostInfo.index]);      // Average Cost
-        const qty = cleanNum(r[qtyInfo.index]);               // Total Quantity
+    return tradableRows.map(r => {
+        const symbol = r.symbol;
+        const type = r.type;
+        const avg_cost = r.avg_cost;
+        const qty = r.qty;
 
-        const spentValue = cleanNum(r[totalSpentInfo.index]);
+        const spentValue = r.spentValue;
         const current_alloc = totalSpent > 0 && spentValue > 0 ? (spentValue / totalSpent) : 0;
 
-        const symbolKey = String(symbol || '').trim().toUpperCase();
+        const symbolKey = r.symbolKey;
         let target_alloc;
         if (TARGET_CRYPTO_SYMBOLS.includes(symbolKey) || type === 'CRYPTO') {
             target_alloc = TARGET_CRYPTO_PCT / 100;
@@ -126,12 +218,12 @@ async function getCryptoFearGreed() {
 
 async function getUsMarketFearGreed() {
     try {
-        const vixHistory = await yahooFinance.historical('^VIX', {
+        const vixHistory = await getHistoricalSafe('^VIX', {
             period1: new Date(new Date().setDate(new Date().getDate() - 365)),
             period2: new Date(),
             interval: '1d'
         });
-        const closes = vixHistory.map(c => c.close).filter(v => v != null);
+        const closes = extractCloseSeries(vixHistory);
         if (!closes.length) return 50;
         const current = closes[closes.length - 1];
         const sorted = [...closes].sort((a, b) => a - b);
@@ -149,15 +241,15 @@ async function getMarketInfo(symbol, options = {}) {
     try {
         let ySym = symbol.trim().toUpperCase();
         if (['BTC', 'ETH', 'SOL'].includes(ySym)) ySym += '-USD';
-        const history = await yahooFinance.historical(ySym, {
+        const history = await getHistoricalSafe(ySym, {
             period1: new Date(new Date().setDate(new Date().getDate() - days)),
             period2: new Date(),
             interval: '1d'
         });
-        const closes = history.map(c => c.close).filter(v => v != null);
+        const closes = extractCloseSeries(history);
         let price = closes[closes.length - 1] || 0;
         if (includeQuote) {
-            const quote = await yahooFinance.quote(ySym);
+            const quote = await getQuoteSafe(ySym);
             price = quote?.regularMarketPrice || quote?.price || price;
         }
         return { price, closes, history };
@@ -186,10 +278,13 @@ function computeDecision({ price, closes, avg_cost, current_alloc, target_alloc,
     let volumeShockPct = null;
     let volumeShock = null;
     if (history && history.length) {
-        const volumes = history.map(h => h.volume).filter(v => v != null);
-        if (volumes.length >= 20) {
-            const lastVol = volumes[volumes.length - 1];
-            const avg20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+        const closedRows = getClosedRows(history);
+        const volumes = closedRows.map(h => h.volume).filter(v => v != null && v > 0);
+        // Exclude the latest bar, which is often still in-progress during market hours.
+        const finalizedVolumes = volumes.length > 1 ? volumes.slice(0, -1) : volumes;
+        if (finalizedVolumes.length >= 21) {
+            const lastVol = finalizedVolumes[finalizedVolumes.length - 1];
+            const avg20 = finalizedVolumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
             if (avg20 > 0 && lastVol != null) {
                 volumeShockPct = ((lastVol - avg20) / avg20) * 100;
                 volumeShock = Math.abs(volumeShockPct) >= 50;
@@ -203,9 +298,10 @@ function computeDecision({ price, closes, avg_cost, current_alloc, target_alloc,
     const distFromAthPct = ath > 0 ? Math.round((((price - ath) / ath) * 100) * 100) / 100 : null;
 
     // 1.3 Risk/Reward vs Support (60-day low)
-    const supportLookback = Math.min(60, closes.length);
-    const support = Math.min(...closes.slice(-supportLookback));
-    const supportDistance = (supportLookback && support > 0) ? Math.round((price - support) * 100) / 100 : null;
+    const validCloses = closes.filter(v => v != null && v > 0);
+    const supportLookback = Math.min(60, validCloses.length);
+    const support = supportLookback > 0 ? Math.min(...validCloses.slice(-supportLookback)) : null;
+    const supportDistance = (support != null && support > 0) ? Math.round((price - support) * 100) / 100 : null;
     const downside = supportDistance != null ? supportDistance : null;
     const upside = Math.round(Math.abs(ema200 - price) * 100) / 100;
     const riskRewardRatio = (downside != null && downside > 0) ? Math.round((upside / downside) * 100) / 100 : null;
@@ -340,4 +436,6 @@ app.get('/analyze', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, () => console.log(`🚀 Brain running at http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 running at http://0.0.0.0:${PORT}`);
+});
