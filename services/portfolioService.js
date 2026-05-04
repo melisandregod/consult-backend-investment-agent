@@ -70,5 +70,12 @@ export async function getRemainingBudget() {
     const res = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Budget_Log!A2:D' });
     const rows = res.data.values;
     if (!rows || rows.length === 0) return 300;
-    return cleanNum(rows[rows.length - 1][3]);
+
+    // Filter out rows where Column D (index 3) is empty or not a number
+    const validRows = rows.filter(r => r[3] !== undefined && r[3] !== '' && !isNaN(cleanNum(r[3])));
+    
+    if (validRows.length === 0) return 300;
+    
+    // Get the last valid numeric entry
+    return cleanNum(validRows[validRows.length - 1][3]);
 }

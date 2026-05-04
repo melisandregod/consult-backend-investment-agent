@@ -419,73 +419,173 @@ function FngIndicator({ label, value }: { label: string, value: number }) {
   );
 }
 
+function getThaiAction(action: string) {
+  if (action.includes('STRONG_BUY')) return 'ซื้อด่วน 🚀';
+  if (action.includes('BUY')) return 'แนะนำให้ซื้อ ✅';
+  if (action.includes('ACCUMULATE')) return 'ทยอยสะสม ⚠️';
+  if (action.includes('TRIM')) return 'ขายทำกำไร 💰';
+  if (action.includes('REDUCE')) return 'ลดสัดส่วน ⚠️';
+  return 'ถือรอจังหวะ';
+}
+
+function getThaiSummary(asset: AnalysisItem) {
+  if (asset.action.includes('TRIM')) return `สัดส่วนในพอร์ตเยอะเกินเป้า และราคาเริ่มตึงตัว ควรขายทำกำไรออกมาบ้าง`;
+  if (asset.action.includes('REDUCE')) return `ราคาขึ้นมาสูงเกินไปและพอร์ตเริ่มหนักตัวนี้เกินไป แนะนำให้ลดสัดส่วนลง`;
+  if (asset.action.includes('STRONG_BUY')) return `ราคาลงมาถูกมากและพอร์ตคุณยังขาดตัวนี้อยู่ เป็นจังหวะเข้าซื้อที่ดีที่สุด`;
+  if (asset.action.includes('BUY')) return `ราคาน่าสนใจและยังเติมพอร์ตได้อีก แนะนำให้ทยอยซื้อตามแผน`;
+  if (asset.action.includes('ACCUMULATE')) return `ราคาเริ่มพักฐานเข้าใกล้จุดที่คุ้มค่า แนะนำให้ค่อยๆ เก็บสะสม`;
+  
+  const isOverAlloc = asset.allocation_gap_pct < -5;
+  const isOverbought = asset.rsi > 70;
+
+  if (isOverAlloc) return `พอร์ตมีตัวนี้เยอะเกินเป้าหมายแล้ว ควรหยุดซื้อเพิ่มเพื่อกระจายความเสี่ยง`;
+  if (isOverbought) return `ราคาขึ้นมาแรงเกินไปในระยะสั้น เสี่ยงโดนเทขาย แนะนำให้ถือรอดูสถานการณ์`;
+  return `ราคายังไม่เข้าจุดที่ได้เปรียบ หรือมีสัดส่วนที่เหมาะสมแล้ว แนะนำให้ถือรอจังหวะถัดไป`;
+}
+
+function getStatusIcon(action: string) {
+  if (action.includes('STRONG_BUY')) return <ShoppingBag className="w-4 h-4" />;
+  if (action.includes('BUY')) return <CheckCircle className="w-4 h-4" />;
+  if (action.includes('ACCUMULATE')) return <Clock className="w-4 h-4" />;
+  if (action.includes('TRIM')) return <TrendingUp className="w-4 h-4" />;
+  if (action.includes('REDUCE')) return <AlertTriangle className="w-4 h-4" />;
+  return <Search className="w-4 h-4" />;
+}
+
 function ActionCard({ asset, showThb, isBudgetExhausted }: { asset: AnalysisItem, showThb: boolean, isBudgetExhausted: boolean }) {
   const isStrongBuy = asset.action.includes('STRONG_BUY');
+  const isTrim = asset.action.includes('TRIM');
+  const isReduce = asset.action.includes('REDUCE');
+  const isAccumulate = asset.action.includes('ACCUMULATE');
+  const isActionable = !isTrim && !isReduce;
+
   const chartData = asset.sparkline.map((val, idx) => ({ val, idx }));
-  
   const recAmount = showThb ? asset.recommend_thb : asset.recommend_usd;
   const recCurrency = showThb ? '฿' : '$';
+  
+  // Allocation progress
+  const progress = Math.min(100, (asset.allocation_current_pct / asset.allocation_target_pct) * 100);
 
   return (
     <div className={cn(
-      "bg-white rounded-2xl border-2 overflow-hidden shadow-sm relative transition-all",
-      isBudgetExhausted ? "border-slate-200 opacity-90" : (isStrongBuy ? "border-emerald-500 shadow-emerald-500/10" : "border-amber-400 shadow-amber-400/10")
+      "bg-white rounded-3xl border-2 overflow-hidden shadow-lg relative transition-all hover:scale-[1.01]",
+      isBudgetExhausted ? "border-slate-200 opacity-95" : 
+      isStrongBuy ? "border-emerald-500 shadow-emerald-500/10" : 
+      isTrim ? "border-purple-500 shadow-purple-500/10" :
+      isReduce ? "border-orange-400 shadow-orange-400/10" :
+      "border-amber-400 shadow-amber-400/10"
     )}>
-      {/* Badge */}
+      {/* Badge with Icon */}
       <div className={cn(
-        "absolute top-0 right-0 px-3 py-1 rounded-bl-xl font-black text-[10px] uppercase tracking-wider text-white",
-        isBudgetExhausted ? "bg-slate-400" : (isStrongBuy ? "bg-emerald-500" : "bg-amber-400")
+        "absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl font-black text-[11px] uppercase tracking-tighter text-white flex items-center gap-1.5 z-10",
+        isBudgetExhausted ? "bg-slate-500" : 
+        isStrongBuy ? "bg-emerald-500" : 
+        isTrim ? "bg-purple-600" :
+        isReduce ? "bg-orange-500" :
+        "bg-amber-500"
       )}>
-        {isBudgetExhausted ? "Watchlist" : asset.action.split(' ')[0]} (Score: {asset.score})
+        {getStatusIcon(asset.action)}
+        {isBudgetExhausted ? "WATCHLIST" : getThaiAction(asset.action)}
       </div>
 
-      <div className="p-5">
-        <div className="flex items-center gap-4 mb-4">
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center font-black text-lg",
-            isBudgetExhausted ? "bg-slate-50 text-slate-400" : (isStrongBuy ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")
-          )}>
-            {asset.symbol.substring(0, 2)}
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-5">
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner",
+              isBudgetExhausted ? "bg-slate-100 text-slate-400" : 
+              isStrongBuy ? "bg-emerald-100 text-emerald-600" : 
+              isTrim ? "bg-purple-100 text-purple-600" :
+              isReduce ? "bg-orange-100 text-orange-600" :
+              "bg-amber-100 text-amber-600"
+            )}>
+              {asset.symbol.substring(0, 2)}
+            </div>
+            <div>
+              <h3 className="font-black text-2xl text-slate-900 tracking-tight">{asset.symbol}</h3>
+              <p className="text-sm font-bold text-slate-500">
+                {showThb ? `฿${asset.price_thb.toLocaleString()}` : `$${asset.price.toLocaleString()}`}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-black text-xl text-slate-900">{asset.symbol}</h3>
-            <p className="text-sm font-semibold text-slate-500">
-              {showThb ? `฿${asset.price_thb.toLocaleString()}` : `$${asset.price.toLocaleString()}`}
-            </p>
+          <div className="text-right pt-1">
+             <span className="px-2 py-1 rounded-lg bg-slate-100 text-[10px] font-black text-slate-500 uppercase">
+                Score: {asset.score}
+             </span>
           </div>
         </div>
 
-        {/* Recommendation Amount */}
-        {!isBudgetExhausted && recAmount && recAmount > 0 ? (
-          <div className="bg-blue-50 rounded-xl p-3 mb-4 border border-blue-100 flex justify-between items-center">
-            <span className="text-xs font-bold text-blue-600 uppercase">Suggested Buy</span>
-            <span className="font-black text-lg text-blue-800">{recCurrency}{recAmount.toLocaleString()}</span>
+        {/* Allocation Status Bar */}
+        <div className="mb-5 space-y-1.5">
+          <div className="flex justify-between items-end">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation สัดส่วนพอร์ต</span>
+            <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
+              {asset.allocation_current_pct}% / {asset.allocation_target_pct}%
+            </span>
           </div>
-        ) : isBudgetExhausted && asset.score >= 60 ? (
-          <div className="bg-amber-50 rounded-xl p-3 mb-4 border border-amber-100 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span className="text-xs font-bold text-amber-700">Opportunity, but budget is 0.</span>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex">
+            <div 
+              className={cn(
+                "h-full transition-all duration-1000",
+                progress >= 100 ? "bg-emerald-500" : "bg-blue-500"
+              )} 
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Thai Summary Box */}
+        <div className={cn(
+          "mb-5 rounded-2xl p-4 border-l-4 shadow-sm",
+          isStrongBuy ? "bg-emerald-50 border-emerald-500 text-emerald-900" :
+          isTrim ? "bg-purple-50 border-purple-500 text-purple-900" :
+          isReduce ? "bg-orange-50 border-orange-500 text-orange-900" :
+          isAccumulate ? "bg-blue-50 border-blue-400 text-blue-900" :
+          "bg-slate-50 border-slate-300 text-slate-800"
+        )}>
+           <p className="text-sm font-black leading-relaxed">
+             {getThaiSummary(asset)}
+           </p>
+        </div>
+
+        {/* Suggested Amount Box */}
+        {isActionable && recAmount && recAmount > 0 ? (
+          <div className={cn(
+            "mb-5 rounded-2xl p-4 shadow-md flex justify-between items-center text-white animate-in zoom-in duration-300",
+            isBudgetExhausted ? "bg-slate-700 shadow-slate-200" : "bg-blue-600 shadow-blue-200"
+          )}>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80">
+                {isBudgetExhausted ? "เป้าหมายการซื้อ (งบหมดแล้ว)" : "ควรซื้อเพิ่มประมาณ"}
+              </span>
+              <span className="text-xl font-black tracking-tight">{recCurrency}{recAmount.toLocaleString()}</span>
+            </div>
+            <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+              <ShoppingBag className="w-5 h-5 text-white" />
+            </div>
           </div>
         ) : null}
 
-        <div className="space-y-2 mb-4">
-          {asset.reasons.slice(0, 2).map((reason, i) => (
-            <div key={i} className="flex gap-2 items-start text-sm font-medium text-slate-700 leading-tight">
-              <span className="mt-0.5 flex-shrink-0">{reason.includes('✅') ? '✅' : '⚠️'}</span>
-              <span>{reason.replace(/[✅⚠️❌]/g, '').trim()}</span>
+        {/* Reasons Grid */}
+        <div className="grid grid-cols-1 gap-2 mb-4">
+          {asset.reasons.map((reason, i) => (
+            <div key={i} className="flex gap-2.5 items-center bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
+              <span className="flex-shrink-0 text-xs">{reason.includes('✅') ? '🟢' : reason.includes('🚨') ? '🔴' : '🟡'}</span>
+              <span className="text-[11px] font-bold text-slate-600">{reason.replace(/[✅⚠️❌🚨🚀🔥]/g, '').trim()}</span>
             </div>
           ))}
         </div>
 
-        <div className="h-10 w-full opacity-40">
+        {/* Sparkline Visual */}
+        <div className="h-10 w-full opacity-60">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <YAxis hide domain={['dataMin', 'dataMax']} />
               <Line 
                 type="monotone" 
                 dataKey="val" 
-                stroke={isBudgetExhausted ? "#94a3b8" : (isStrongBuy ? "#10b981" : "#fbbf24")} 
-                strokeWidth={2} 
+                stroke={isBudgetExhausted ? "#94a3b8" : (isStrongBuy ? "#10b981" : isTrim ? "#9333ea" : isReduce ? "#f97316" : "#fbbf24")} 
+                strokeWidth={3} 
                 dot={false} 
               />
             </LineChart>
@@ -497,27 +597,43 @@ function ActionCard({ asset, showThb, isBudgetExhausted }: { asset: AnalysisItem
 }
 
 function HoldCard({ asset, showThb }: { asset: AnalysisItem, showThb: boolean }) {
+  const isOverAlloc = asset.allocation_gap_pct < 0;
+  const progress = Math.min(100, (asset.allocation_current_pct / asset.allocation_target_pct) * 100);
+
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xs">
-          {asset.symbol.substring(0, 2)}
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-all active:scale-95 group">
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-400 text-sm group-hover:bg-slate-100 transition-colors">
+            {asset.symbol.substring(0, 2)}
+          </div>
+          <div>
+            <h3 className="font-black text-slate-900 text-md tracking-tight">{asset.symbol}</h3>
+            <p className="text-[10px] font-bold text-slate-500 leading-tight">{asset.allocation_current_pct}% ในพอร์ต</p>
+          </div>
         </div>
-        <div>
-          <h3 className="font-bold text-slate-800 text-sm">{asset.symbol}</h3>
-          <p className="text-[10px] font-semibold text-slate-500 uppercase">Score: {asset.score}</p>
+        <div className="text-right">
+          <p className="text-md font-black text-slate-900 tracking-tight">
+            {showThb ? `฿${asset.price_thb.toLocaleString()}` : `$${asset.price.toLocaleString()}`}
+          </p>
+          <div className={cn(
+            "inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider mt-1",
+            isOverAlloc ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400"
+          )}>
+            {isOverAlloc ? 'OVER-LIMIT' : 'OPTIMAL'}
+          </div>
         </div>
       </div>
-      <div className="text-right">
-        <p className="text-sm font-bold text-slate-800">
-          {showThb ? `฿${asset.price_thb.toLocaleString()}` : `$${asset.price.toLocaleString()}`}
-        </p>
-        <p className={cn(
-          "text-[10px] font-bold uppercase",
-          asset.allocation_gap_pct < 0 ? "text-slate-400" : "text-emerald-500"
-        )}>
-          {asset.allocation_gap_pct > 0 ? 'Need more' : 'Full'}
-        </p>
+      
+      {/* Mini Progress Bar for HoldCard */}
+      <div className="space-y-1">
+        <div className="h-1 w-full bg-slate-50 rounded-full overflow-hidden">
+          <div 
+            className={cn("h-full", progress >= 100 ? "bg-emerald-400" : "bg-slate-300")} 
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-[10px] font-bold text-slate-400 line-clamp-1">{getThaiSummary(asset)}</p>
       </div>
     </div>
   );

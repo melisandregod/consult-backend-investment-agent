@@ -1,7 +1,7 @@
 import express from 'express';
 import { getPortfolioSummary, getRemainingBudget } from '../services/portfolioService.js';
 import { getCryptoFearGreed, getUsMarketFearGreed, getMarketInfo, isCryptoSymbol } from '../services/marketDataService.js';
-import { analyze } from '../services/analysisService.js';
+import { analyze, distributeBudget } from '../services/analysisService.js';
 import { getUsdThbRate } from '../services/currencyService.js';
 
 const router = express.Router();
@@ -25,39 +25,41 @@ router.get('/analyze', async (req, res) => {
             CRYPTO: { current: 0, target: 0 }
         };
 
-        const results = await Promise.all(portfolio.map(async (a, i) => {
+        const preliminaryAnalysis = await Promise.all(portfolio.map(async (a, i) => {
             const currentAllocByValue = totalMarketValue > 0 ? (marketValues[i] / totalMarketValue) : a.current_alloc;
             const fng = isCryptoSymbol(a.symbol) ? cryptoFng : usFng;
-            
-            const analysis = await analyze(a, budget, fng, marketInfos[i], currentAllocByValue);
-            
-            const effectiveRecUsd = budget > 0 ? analysis.recommend_usd : 0;
-            const cost = a.spentValue || 0;
+            return await analyze(a, budget, fng, marketInfos[i], currentAllocByValue);
+        }));
+
+        const analyzedResults = distributeBudget(preliminaryAnalysis, portfolio, budget, totalMarketValue);
+
+        const results = analyzedResults.map((analysis, i) => {
+            const asset = portfolio[i];
+            const cost = asset.spentValue || 0;
             totalCostUsd += cost;
 
             // Group by type for allocation summary
-            const aType = a.type === 'CRYPTO' ? 'CRYPTO' : 'STOCK';
+            const aType = asset.type === 'CRYPTO' ? 'CRYPTO' : 'STOCK';
             allocationByType[aType].current += (analysis.market_value || 0);
-            allocationByType[aType].target += (a.target_alloc * totalMarketValue);
+            allocationByType[aType].target += (asset.target_alloc * totalMarketValue);
 
             const gainLossUsd = (analysis.market_value || 0) - cost;
             const gainLossPct = cost > 0 ? (gainLossUsd / cost) * 100 : 0;
 
             return {
                 ...analysis,
-                type: a.type,
+                type: asset.type,
                 cost_usd: Math.round(cost * 100) / 100,
                 cost_thb: Math.round(cost * exchangeRate * 100) / 100,
                 gain_loss_usd: Math.round(gainLossUsd * 100) / 100,
                 gain_loss_thb: Math.round(gainLossUsd * exchangeRate * 100) / 100,
                 gain_loss_pct: Math.round(gainLossPct * 100) / 100,
-                recommend_usd: effectiveRecUsd,
                 price_thb: Math.round(analysis.price * exchangeRate * 100) / 100,
                 market_value_thb: Math.round(analysis.market_value * exchangeRate * 100) / 100,
-                recommend_thb: effectiveRecUsd ? Math.round(effectiveRecUsd * exchangeRate) : 0,
+                recommend_thb: Math.round(analysis.recommend_usd * exchangeRate),
                 is_budget_limited: budget <= 0 && analysis.score >= 40
             };
-        }));
+        });
 
         const totalPlUsd = totalMarketValue - totalCostUsd;
         const totalPlPct = totalCostUsd > 0 ? (totalPlUsd / totalCostUsd) * 100 : 0;
