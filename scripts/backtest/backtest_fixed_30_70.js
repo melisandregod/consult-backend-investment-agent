@@ -1,21 +1,40 @@
 import dotenv from 'dotenv';
 import { getPortfolioSummary } from '../../services/portfolioService.js';
 import { getHistoricalSafe } from '../../services/marketDataService.js';
-import { extractCloseSeries } from '../../utils/math.js';
 
 dotenv.config();
 
-async function runBlindBacktest() {
+async function runFixedBacktest() {
     // 1. Get Inputs from CLI (Default: 5 years, $300/month)
     const years = parseInt(process.argv[2]) || 5;
     const monthlyBudget = parseFloat(process.argv[3]) || 300;
 
-    console.log(`📊 Starting Blind DCA Backtest: $${monthlyBudget} Monthly (Last ${years} Years)\n`);
+    console.log(`📊 Starting Fixed Allocation Backtest: $${monthlyBudget} Monthly (30% BTC, 70% Others Split)`);
+    console.log(`⏳ Period: Last ${years} Years\n`);
 
     try {
         const portfolio = await getPortfolioSummary();
-        const assets = portfolio.filter(a => a.target_alloc > 0);
-        const totalTargetAlloc = assets.reduce((sum, a) => sum + a.target_alloc, 0);
+        const allAssets = portfolio.filter(a => a.target_alloc > 0 || a.symbol === 'BTC');
+        
+        // Setup Fixed Allocations: BTC 30%, Others split remaining 70%
+        const btcAsset = allAssets.find(a => a.symbol === 'BTC');
+        const otherAssets = allAssets.filter(a => a.symbol !== 'BTC');
+        
+        const assets = [];
+        if (btcAsset) {
+            assets.push({ ...btcAsset, fixed_alloc: 0.30 });
+        }
+        
+        const otherCount = otherAssets.length;
+        const otherAlloc = otherCount > 0 ? 0.70 / otherCount : 0;
+        
+        otherAssets.forEach(a => {
+            assets.push({ ...a, fixed_alloc: otherAlloc });
+        });
+
+        console.log("📈 Planned Allocation:");
+        assets.forEach(a => console.log(`- ${a.symbol}: ${(a.fixed_alloc * 100).toFixed(1)}%`));
+        console.log("");
 
         const now = new Date();
         const startDate = new Date();
@@ -50,7 +69,6 @@ async function runBlindBacktest() {
         for (const buyDate of buyDates) {
             cash += monthlyBudget;
             totalInvested += monthlyBudget;
-            const dateStr = buyDate.toISOString().split('T')[0];
 
             let portfolioValue = cash;
             for (const asset of assets) {
@@ -73,8 +91,8 @@ async function runBlindBacktest() {
                 const dayData = history.filter(h => new Date(h.date) <= buyDate).pop();
                 if (!dayData) continue;
 
-                // Divide budget based on target allocation ratio
-                const buyUsd = monthlyBudget * (asset.target_alloc / totalTargetAlloc);
+                // Divide budget based on FIXED allocation
+                const buyUsd = monthlyBudget * asset.fixed_alloc;
                 const buyQty = buyUsd / dayData.close;
 
                 const h = holdings[asset.symbol];
@@ -86,18 +104,37 @@ async function runBlindBacktest() {
         }
 
         let finalValue = cash;
+        const results = [];
         for (const asset of assets) {
             const h = holdings[asset.symbol];
             const history = assetHistories[asset.symbol];
             const finalPrice = history[history.length - 1].close;
-            finalValue += h.qty * finalPrice;
+            const val = h.qty * finalPrice;
+            finalValue += val;
+            results.push({
+                symbol: asset.symbol,
+                value: val,
+                qty: h.qty,
+                avg_cost: h.avg_cost,
+                current_price: finalPrice
+            });
         }
+
+        console.log("--------------------------------------------------");
+        console.log(`🏆 FIXED 30/70 SUMMARY (${years} YEARS)`);
+        console.log("--------------------------------------------------");
+        results.forEach(item => {
+            const allocPct = (item.value / finalValue) * 100;
+            const profitPct = item.qty > 0 ? ((item.current_price - item.avg_cost) / item.avg_cost) * 100 : 0;
+            console.log(`- ${item.symbol.padEnd(6)}: Value: $${item.value.toFixed(2).padStart(9)} | Alloc: ${allocPct.toFixed(1).padStart(4)}% | Profit: ${profitPct.toFixed(1).padStart(6)}%`);
+        });
+        console.log("--------------------------------------------------");
 
         const totalProfit = finalValue - totalInvested;
         const totalProfitPct = (totalProfit / totalInvested) * 100;
         const cagr = (Math.pow(finalValue / totalInvested, 1 / years) - 1) * 100;
 
-        console.log(`🏆 BLIND DCA SUMMARY (${years} YEARS)`);
+        console.log("\nFinancials:");
         console.log(`Total Invested:   $${totalInvested.toFixed(2)}`);
         console.log(`Final Value:      $${finalValue.toFixed(2)}`);
         console.log(`Net Profit/Loss:  $${totalProfit.toFixed(2)} (${totalProfitPct.toFixed(2)}%)`);
@@ -110,4 +147,4 @@ async function runBlindBacktest() {
     }
 }
 
-runBlindBacktest();
+runFixedBacktest();

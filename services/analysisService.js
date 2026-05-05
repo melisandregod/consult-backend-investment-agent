@@ -3,18 +3,29 @@ import { getClosedRows } from '../utils/math.js';
 import { getMarketInfo } from './marketDataService.js';
 
 /**
+ * Helper to aggregate daily closes into weekly closes for indicators.
+ */
+function getWeeklyCloses(dailyCloses, history) {
+    if (!history || history.length === 0) return dailyCloses;
+    const weeklyCloses = [];
+    let currentWeekCloses = [];
+    
+    for (const day of history) {
+        currentWeekCloses.push(day.close);
+        const d = new Date(day.date);
+        if (d.getDay() === 0) { // Sunday
+            weeklyCloses.push(currentWeekCloses[currentWeekCloses.length - 1]);
+            currentWeekCloses = [];
+        }
+    }
+    if (currentWeekCloses.length > 0) {
+        weeklyCloses.push(currentWeekCloses[currentWeekCloses.length - 1]);
+    }
+    return weeklyCloses;
+}
+
+/**
  * Core decision logic for investment scoring.
- * 
- * @param {Object} params
- * @param {number} params.price Current price
- * @param {number[]} params.closes Historical close prices
- * @param {number} params.avg_cost Average cost from portfolio
- * @param {number} params.current_alloc Current allocation (0 to 1)
- * @param {number} params.target_alloc Target allocation (0 to 1)
- * @param {number} params.fng Fear and Greed index (0 to 100)
- * @param {number} params.budget Available budget
- * @param {Array} params.history Full historical data rows
- * @returns {Object} Analysis result with score and action
  */
 export function computeDecision({ price, closes, avg_cost, current_alloc, target_alloc, fng, budget = 0, history = null }) {
     let score = 0;
@@ -25,7 +36,7 @@ export function computeDecision({ price, closes, avg_cost, current_alloc, target
     const avgCostDiffPct = avgCostAvailable ? ((price - avg_cost) / avg_cost) * 100 : null;
     const isAboveAvgCost = avgCostAvailable ? price > avg_cost : null;
 
-    // 1. Technical (30%) - RSI & Trend
+    // 1. Daily Technicals
     const rsiArr = RSI.calculate({ values: closes, period: 14 });
     const emaArr = EMA.calculate({ values: closes, period: 200 });
     const rsi = rsiArr[rsiArr.length - 1];
@@ -34,13 +45,19 @@ export function computeDecision({ price, closes, avg_cost, current_alloc, target
         return { score: 0, reasons: ["⚠️ Insufficient indicator data"], action: "WAIT", recommend_usd: 0, status: "Insufficient Data" };
     }
 
+    // 2. Weekly Technicals (Trend Awareness)
+    const weeklyCloses = getWeeklyCloses(closes, history);
+    const wRsiArr = RSI.calculate({ values: weeklyCloses, period: 14 });
+    const wEmaArr = EMA.calculate({ values: weeklyCloses, period: 30 }); // ~ Daily 210
+    const wRsi = wRsiArr[wRsiArr.length - 1];
+    const wEma = wEmaArr[wEmaArr.length - 1];
+
     // 1.1 Volume Shock (20-day)
     let volumeShockPct = null;
     let volumeShock = null;
     if (history && history.length) {
         const closedRows = getClosedRows(history);
         const volumes = closedRows.map(h => h.volume).filter(v => v != null && v > 0);
-        // Exclude the latest bar, which is often still in-progress during market hours.
         const finalizedVolumes = volumes.length > 1 ? volumes.slice(0, -1) : volumes;
         if (finalizedVolumes.length >= 21) {
             const lastVol = finalizedVolumes[finalizedVolumes.length - 1];
@@ -79,6 +96,17 @@ export function computeDecision({ price, closes, avg_cost, current_alloc, target
 
     if (price > ema200) { score += 10; reasons.push("✅ Uptrend (Above EMA200)"); }
     else { reasons.push("⚠️ Downtrend (Below EMA200)"); }
+
+    // --- WEEKLY OVERRIDE (Trend Confirmation) ---
+    if (wEma != null && wRsi != null) {
+        if (price < wEma && wRsi > 40) {
+            score -= 20;
+            reasons.push(`🚨 Weekly Trend Down (Below W-EMA30) - Being Cautious`);
+        } else if (price > wEma && wRsi < 65) {
+            score += 10;
+            reasons.push(`🚀 Weekly Trend Up (Above W-EMA30) - Bullish Confirmation`);
+        }
+    }
 
     // 3. Sentiment (15%) - Fear & Greed
     if (fng < 25) { score += 15; reasons.push(`✅ Extreme Fear (${fng})`); }
@@ -140,6 +168,8 @@ export function computeDecision({ price, closes, avg_cost, current_alloc, target
         is_above_avg_cost: isAboveAvgCost,
         rsi: Math.round(rsi * 100) / 100,
         ema200: Math.round(ema200 * 100) / 100,
+        w_rsi: wRsi ? Math.round(wRsi * 100) / 100 : null,
+        w_ema: wEma ? Math.round(wEma * 100) / 100 : null,
         volume_shock_pct: volumeShockPct,
         volume_shock: volumeShock,
         dist_from_ath_pct: distFromAthPct,

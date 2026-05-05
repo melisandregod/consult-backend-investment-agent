@@ -9,6 +9,8 @@
     "analyze": "node scripts/analyze.js",
     "backtest": "node scripts/backtest/backtest_dca.js",
     "backtest:blind": "node scripts/backtest/backtest_blind_dca.js",
+    "backtest:fixed": "node scripts/backtest/backtest_fixed_30_70.js",
+    "backtest:weekly": "node scripts/backtest/backtest_weekly_dca.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

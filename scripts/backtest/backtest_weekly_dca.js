@@ -6,47 +6,49 @@ import { extractCloseSeries } from '../../utils/math.js';
 
 dotenv.config();
 
-async function runBacktest() {
-    // 1. Get Inputs from CLI (Default: 5 years, $300/month, 27th day)
+async function runWeeklyDcaBacktest() {
     const years = parseInt(process.argv[2]) || 5;
     const monthlyBudget = parseFloat(process.argv[3]) || 300;
-    const buyDay = parseInt(process.argv[4]) || 27;
+    const weeklyBudget = monthlyBudget / 4;
 
-    console.log(`📊 Starting Backtest: $${monthlyBudget} Monthly DCA on the ${buyDay}th (Last ${years} Years)\n`);
+    console.log(`📊 Starting Weekly Selective DCA Backtest: $${weeklyBudget} per Week ($${monthlyBudget}/mo)`);
+    console.log(`⏳ Period: Last ${years} Years\n`);
 
     try {
         const portfolio = await getPortfolioSummary();
         const assets = portfolio.filter(a => a.target_alloc > 0);
-        console.log(`✅ Loaded ${assets.length} assets with target allocations.`);
+        console.log(`✅ Loaded ${assets.length} assets.`);
 
         const now = new Date();
         const startDate = new Date();
         startDate.setFullYear(now.getFullYear() - years);
-        startDate.setMonth(startDate.getMonth() - 6);
+        startDate.setMonth(startDate.getMonth() - 12);
 
-        console.log(`⏳ Fetching historical data for ${years} years...`);
         const assetHistories = {};
         for (const asset of assets) {
             let ySym = asset.symbol.trim().toUpperCase();
             if (['BTC', 'ETH', 'SOL'].includes(ySym)) ySym += '-USD';
-            try {
-                const history = await getHistoricalSafe(ySym, {
-                    period1: startDate,
-                    period2: now,
-                    interval: '1d'
-                });
-                assetHistories[asset.symbol] = history;
-            } catch (err) {}
+            assetHistories[asset.symbol] = await getHistoricalSafe(ySym, {
+                period1: startDate,
+                period2: now,
+                interval: '1d'
+            });
         }
 
+        // Generate Weekly Buy Dates (4 times a month: 7, 14, 21, 28)
         const buyDates = [];
         const totalMonths = years * 12;
         for (let i = totalMonths - 1; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(now.getMonth() - i);
-            d.setDate(buyDay);
-            buyDates.push(new Date(d));
+            const baseDate = new Date();
+            baseDate.setMonth(now.getMonth() - i);
+            
+            [7, 14, 21, 28].forEach(day => {
+                const d = new Date(baseDate);
+                d.setDate(day);
+                if (d <= now) buyDates.push(new Date(d));
+            });
         }
+        buyDates.sort((a, b) => a - b);
 
         let cash = 0;
         let totalInvested = 0;
@@ -56,9 +58,8 @@ async function runBacktest() {
         assets.forEach(a => holdings[a.symbol] = { qty: 0, avg_cost: 0 });
 
         for (const buyDate of buyDates) {
-            cash += monthlyBudget;
-            totalInvested += monthlyBudget;
-            const dateStr = buyDate.toISOString().split('T')[0];
+            cash += weeklyBudget;
+            totalInvested += weeklyBudget;
             
             const currentPrices = {};
             const analysisResults = [];
@@ -96,7 +97,7 @@ async function runBacktest() {
                     current_alloc,
                     target_alloc: asset.target_alloc,
                     fng: 50,
-                    budget: monthlyBudget, 
+                    budget: weeklyBudget, 
                     history: slice
                 });
 
@@ -109,77 +110,50 @@ async function runBacktest() {
                 });
             }
 
-            // Use Smart Budget Distribution 2.0 (Same as API)
             const distributedResults = distributeBudget(analysisResults, assets, cash, portfolioValue);
             let targets = distributedResults.filter(r => r.recommend_usd > 0);
             
-            if (targets.length > 0) {
-                for (const res of targets) {
-                    const buyUsd = res.recommend_usd;
-                    const buyQty = buyUsd / res.price;
-                    const h = holdings[res.symbol];
-                    const totalCost = (h.qty * h.avg_cost) + buyUsd;
-                    h.qty += buyQty;
-                    h.avg_cost = totalCost / h.qty;
-                    cash -= buyUsd;
-                }
+            for (const res of targets) {
+                const buyUsd = Math.min(res.recommend_usd, cash);
+                if (buyUsd <= 0) continue;
+                const buyQty = buyUsd / res.price;
+                const h = holdings[res.symbol];
+                const totalCost = (h.qty * h.avg_cost) + buyUsd;
+                h.qty += buyQty;
+                h.avg_cost = totalCost / h.qty;
+                cash -= buyUsd;
             }
         }
 
-        // 6. Final Summary
-        console.log("\n--------------------------------------------------");
-        console.log(`🏆 SELECTIVE BUY SUMMARY (${years} YEARS)`);
+        console.log("--------------------------------------------------");
+        console.log(`🏆 WEEKLY SELECTIVE DCA SUMMARY (${years} YEARS)`);
         console.log("--------------------------------------------------");
         
         let finalValue = cash;
-        const assetBreakdown = [];
         for (const asset of assets) {
             const h = holdings[asset.symbol];
             const history = assetHistories[asset.symbol];
             const finalPrice = history[history.length - 1].close;
-            const value = h.qty * finalPrice;
-            finalValue += value;
-            assetBreakdown.push({ 
-                symbol: asset.symbol, 
-                qty: h.qty, 
-                avg_cost: h.avg_cost, 
-                current_price: finalPrice, 
-                value, 
-                target: asset.target_alloc 
-            });
+            finalValue += h.qty * finalPrice;
+            const profitPct = h.qty > 0 ? ((finalPrice - h.avg_cost) / h.avg_cost) * 100 : 0;
+            console.log(`- ${asset.symbol.padEnd(6)}: Profit: ${profitPct.toFixed(1).padStart(6)}% | Value: $${(h.qty * finalPrice).toFixed(2)}`);
         }
 
-        console.log("Asset Breakdown & Allocation:");
-        for (const item of assetBreakdown) {
-            const allocPct = (item.value / finalValue) * 100;
-            const targetPct = item.target * 100;
-            const profitPct = item.qty > 0 ? ((item.current_price - item.avg_cost) / item.avg_cost) * 100 : 0;
-            console.log(`- ${item.symbol.padEnd(6)}: Value: $${item.value.toFixed(2).padStart(9)} | Alloc: ${allocPct.toFixed(1).padStart(4)}% (Target: ${targetPct.toFixed(1)}%) | Profit: ${profitPct.toFixed(1).padStart(6)}%`);
-        }
-
-        const cashAllocPct = (cash / finalValue) * 100;
-        console.log(`- CASH  : Value: $${cash.toFixed(2).padStart(9)} | Alloc: ${cashAllocPct.toFixed(1).padStart(4)}%`);
-        console.log("--------------------------------------------------");
-
-        const totalProfit = finalValue - totalInvested;
-        const totalProfitPct = (totalProfit / totalInvested) * 100;
-        
-        // Annualized Return (CAGR) - Using simplified formula for DCA: (Final/Invested)^(1/years) - 1
-        // Note: For DCA, this is a conservative estimate of the actual IRR.
+        const totalProfitPct = ((finalValue - totalInvested) / totalInvested) * 100;
         const cagr = (Math.pow(finalValue / totalInvested, 1 / years) - 1) * 100;
 
-        console.log("\nFinancials:");
+        console.log("--------------------------------------------------");
         console.log(`Total Invested:   $${totalInvested.toFixed(2)}`);
         console.log(`Final Value:      $${finalValue.toFixed(2)}`);
-        console.log(`Net Profit/Loss:  $${totalProfit.toFixed(2)} (${totalProfitPct.toFixed(2)}%)`);
+        console.log(`Net Profit/Loss:  ${totalProfitPct.toFixed(2)}%`);
         console.log(`Annualized Rate:  ${cagr.toFixed(2)}% (CAGR)`);
         console.log(`Max Drawdown:     ${(maxDrawdown * 100).toFixed(2)}%`);
         console.log(`Remaining Cash:   $${cash.toFixed(2)}`);
-        console.log("--------------------------------------------------");
+        console.log("--------------------------------------------------\n");
 
     } catch (error) {
         console.error("❌ Backtest failed:", error);
     }
 }
 
-runBacktest();
+runWeeklyDcaBacktest();

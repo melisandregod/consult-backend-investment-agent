@@ -50,13 +50,21 @@ We provide several scripts for quick analysis and strategy validation:
   ```bash
   npm run analyze
   ```
-- **Backtest Strategy:** Run the validated "Selective Buy" strategy over the last 5 years.
+- **Backtest Strategy:** Run the validated "Selective Buy" strategy.
   ```bash
+  # Default (5 years, $300/month)
   npm run backtest
+  
+  # Custom (e.g., 3 years, $500/month)
+  npm run backtest -- 3 500
   ```
 - **Blind DCA Backtest:** Compare with a standard monthly DCA approach.
   ```bash
+  # Default (5 years, $300/month)
   npm run backtest:blind
+  
+  # Custom (e.g., 2 years, $200/month)
+  npm run backtest:blind -- 2 200
   ```
 
 ## Project Structure
