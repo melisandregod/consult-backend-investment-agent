@@ -1,6 +1,6 @@
 import { getPortfolioSummary, getRemainingBudget } from '../services/portfolioService.js';
 import { getCryptoFearGreed, getUsMarketFearGreed, getMarketInfo, isCryptoSymbol } from '../services/marketDataService.js';
-import { analyze, distributeBudget } from '../services/analysisService.js';
+import { analyze, distributeBudget, calculateRebalance } from '../services/analysisService.js';
 import { getUsdThbRate } from '../services/currencyService.js';
 import { extractCloseSeries } from '../utils/math.js';
 import dotenv from 'dotenv';
@@ -24,11 +24,26 @@ async function runRealAnalysis() {
         
         console.log(`🌡️ Fear & Greed: Crypto=${cryptoFng}, US Market=${usFng}`);
 
+        // Quarterly Logic: March, June, September, December
+        const currentMonth = new Date().getMonth() + 1; // 1-12
+        const rebalanceMonths = [3, 6, 9, 12];
+        const isRebalanceMonth = rebalanceMonths.includes(currentMonth);
+        
+        // Calculate months until next rebalance
+        let monthsUntilRebalance = 0;
+        if (!isRebalanceMonth) {
+            const nextRebalanceMonth = rebalanceMonths.find(m => m > currentMonth) || 3;
+            monthsUntilRebalance = nextRebalanceMonth > currentMonth 
+                ? nextRebalanceMonth - currentMonth 
+                : (12 - currentMonth) + nextRebalanceMonth;
+        }
+
         // 1. Pre-fetch market info for all assets to calculate total portfolio value
         console.log("⏳ Fetching market prices...");
         const marketInfos = await Promise.all(portfolio.map(a => getMarketInfo(a.symbol)));
         const marketValues = marketInfos.map((m, i) => (m.price || 0) * (portfolio[i].qty || 0));
         const totalMarketValue = marketValues.reduce((sum, v) => sum + v, 0);
+        const totalPortfolioValue = totalMarketValue + Math.max(0, budget);
 
         // 2. Analyze each asset with accurate allocation %
         const preliminaryAnalysis = [];
@@ -37,23 +52,60 @@ async function runRealAnalysis() {
             const marketInfo = marketInfos[i];
             const fng = isCryptoSymbol(asset.symbol) ? cryptoFng : usFng;
             
-            console.log(`\n--- Analyzing ${asset.symbol} ---`);
-            
             // Calculate current allocation by actual current value
             const currentAllocByValue = totalMarketValue > 0 ? (marketValues[i] / totalMarketValue) : asset.current_alloc;
-            
             const result = await analyze(asset, budget, fng, marketInfo, currentAllocByValue);
-            
-            console.log(`Price: $${result.price}`);
-            console.log(`Current Allocation: ${result.allocation_current_pct}% (Target: ${result.allocation_target_pct}%)`);
-            console.log(`Score: ${result.score}`);
-            console.log(`Action: ${result.action}`);
-            console.log(`Reasons: ${result.reasons.join(' | ')}`);
             preliminaryAnalysis.push(result);
         }
 
-        // 3. Smart Budget Distribution
-        const results = distributeBudget(preliminaryAnalysis, portfolio, budget, totalMarketValue);
+        // 3. Smart Budget Distribution & Rebalance Calculation
+        const distributedResults = distributeBudget(preliminaryAnalysis, portfolio, budget, totalMarketValue);
+        const finalResults = calculateRebalance(distributedResults, totalPortfolioValue);
+
+        // --- QUARTERLY REBALANCE SECTION ---
+        console.log("\n" + "=".repeat(50));
+        if (isRebalanceMonth) {
+            console.log("🔔 QUARTERLY REBALANCE ALERT: IT'S TIME! (MAR/JUN/SEP/DEC)");
+            console.log("=".repeat(50));
+            
+            // Financial Verification
+            let totalToSell = 0;
+            let totalToBuy = 0;
+            
+            finalResults.forEach(r => {
+                if (r.rebalance_diff_usd < 0) totalToSell += Math.abs(r.rebalance_diff_usd);
+                else totalToBuy += r.rebalance_diff_usd;
+            });
+
+            console.log("Recommended actions to keep portfolio in balance:");
+            console.log(`Symbol | Action      | Amount (USD) | Target %`);
+            console.log("-".repeat(50));
+            
+            finalResults.forEach(r => {
+                const actionStr = r.rebalance_action === "SELL" ? "SELL (Trim) " : "BUY (Add)   ";
+                const significantMarker = r.is_rebalance_significant ? "⚠️" : " ";
+                console.log(`${r.symbol.padEnd(6)} | ${actionStr} | $${Math.abs(r.rebalance_diff_usd).toString().padEnd(10)} | ${r.allocation_target_pct.toFixed(1)}% ${significantMarker}`);
+            });
+
+            console.log("-".repeat(50));
+            console.log(`💵 CASH FLOW SUMMARY:`);
+            console.log(`Total Proceeds from Selling:  $${totalToSell.toFixed(2)}`);
+            console.log(`Current Monthly Budget:       $${budget.toFixed(2)}`);
+            console.log(`Total Available for Buying:   $${(totalToSell + budget).toFixed(2)}`);
+            console.log(`Total Needed for Buying:      $${totalToBuy.toFixed(2)}`);
+            
+            const netDiff = (totalToSell + budget) - totalToBuy;
+            if (Math.abs(netDiff) < 1) {
+                console.log(`✅ Financial Integrity Check: PASSED (Balanced)`);
+            } else {
+                console.log(`❌ Financial Integrity Check: FAILED (Gap: $${netDiff.toFixed(2)})`);
+            }
+        } else {
+            console.log(`📅 NEXT REBALANCE IN: ${monthsUntilRebalance} MONTH(S)`);
+            const nextMonthName = new Date(0, rebalanceMonths.find(m => m > currentMonth || 3) - 1).toLocaleString('en-US', { month: 'long' });
+            console.log(`Next scheduled rebalance: ${nextMonthName}`);
+        }
+        console.log("=".repeat(50));
 
         // --- FINAL SUMMARY ---
         console.log("\n" + "=".repeat(50));
@@ -63,7 +115,7 @@ async function runRealAnalysis() {
         let totalValue = 0;
         const buyOrders = [];
         
-        for (const r of results) {
+        for (const r of finalResults) {
             totalValue += r.market_value;
             if (r.recommend_usd > 0) {
                 buyOrders.push(r);
