@@ -1,10 +1,19 @@
 import express from 'express';
-import { getPortfolioSummary, getRemainingBudget } from '../services/portfolioService.js';
+import { getPortfolioSummary, getRemainingBudget, getTransactions } from '../services/portfolioService.js';
 import { getCryptoFearGreed, getUsMarketFearGreed, getMarketInfo, isCryptoSymbol } from '../services/marketDataService.js';
 import { analyze, distributeBudget, calculateRebalance } from '../services/analysisService.js';
 import { getUsdThbRate } from '../services/currencyService.js';
 
 const router = express.Router();
+
+router.get('/api/transactions', async (req, res) => {
+    try {
+        const transactions = await getTransactions();
+        res.json(transactions);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 router.get('/analyze', async (req, res) => {
     try {
@@ -38,24 +47,32 @@ router.get('/analyze', async (req, res) => {
                 gain_loss_usd: Math.round(gainLossUsd * 100) / 100,
                 gain_loss_pct: Math.round(gainLossPct * 100) / 100,
                 market_value_thb: Math.round(analysis.market_value * exchangeRate * 100) / 100,
+                price_thb: Math.round(analysis.price * exchangeRate * 100) / 100,
                 recommend_thb: Math.round(analysis.recommend_usd * exchangeRate),
                 rebalance_diff_thb: Math.round(analysis.rebalance_diff_usd * exchangeRate * 100) / 100
             };
         });
 
         const currentMonth = new Date().getMonth() + 1;
-        const isRebalanceMonth = [3, 6, 9, 12].includes(currentMonth);
+        const rebalanceMonths = [3, 6, 9, 12];
+        const isRebalanceMonth = rebalanceMonths.includes(currentMonth);
+        
+        let monthsUntilRebalance = 0;
+        if (!isRebalanceMonth) {
+            const nextRebalanceMonth = rebalanceMonths.find(m => m > currentMonth) || 3;
+            monthsUntilRebalance = nextRebalanceMonth > currentMonth 
+                ? nextRebalanceMonth - currentMonth 
+                : (12 - currentMonth) + nextRebalanceMonth;
+        }
 
         res.json({
             budget_remaining: budget,
+            exchange_rate: exchangeRate,
             is_rebalance_month: isRebalanceMonth,
+            months_until_rebalance: monthsUntilRebalance,
             total_market_value: Math.round(totalMarketValue * 100) / 100,
             analysis: results
         });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -66,21 +83,14 @@ router.get('/api/summary', async (req, res) => {
         const [portfolio, budget] = await Promise.all([
             getPortfolioSummary(), getRemainingBudget()
         ]);
-        const [cryptoFng, usFng] = await Promise.all([
-            getCryptoFearGreed(), getUsMarketFearGreed()
-        ]);
         
         const marketInfos = await Promise.all(portfolio.map(a => getMarketInfo(a.symbol, { includeQuote: false })));
         const marketValues = marketInfos.map((m, i) => (m.price || 0) * (portfolio[i].qty || 0));
         const totalMarketValue = marketValues.reduce((sum, v) => sum + v, 0);
 
-        const buySignals = []; // Simple count for summary
-        
         res.json({
             total_market_value: Math.round(totalMarketValue * 100) / 100,
             budget_remaining: budget,
-            fear_greed_crypto: cryptoFng,
-            fear_greed_us: usFng,
             asset_count: portfolio.length
         });
     } catch (e) {

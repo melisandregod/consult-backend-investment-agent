@@ -47,10 +47,13 @@ npm run backtest
 | Type | Asset | Target % | Role |
 | :--- | :--- | :--- | :--- |
 | Crypto | BTC | 30.0% | High-Growth Core |
-| Stock | NVDA | 10.0% | Tech Momentum |
-| Stock | AAPL | 10.0% | Stability/Growth |
-| Stock | MSFT | 10.0% | Enterprise Core |
-| Stock | ... | 10.0% | Diversification |
+| Stock | NVDA | 7.0% | Tech Momentum |
+| Stock | AAPL | 7.0% | Stability/Growth |
+| Stock | MSFT | 7.0% | Enterprise Core |
+| Stock | AMD | 7.0% | Tech Momentum (New) |
+| Stock | ARM | 7.0% | Tech Infrastructure (New) |
+| Stock | INTC | 7.0% | Value Recovery (New) |
+| Stock | ... | 7.0% | Diversification (10 Stocks Total) |
 
 ---
 *Last Updated: May 4, 2026 (Logic Unified: API & Backtest v2.0)*

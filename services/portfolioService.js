@@ -65,6 +65,48 @@ export async function getPortfolioSummary() {
     }).filter(i => i.symbol);
 }
 
+export async function getTransactions() {
+    const gs = await getSheetsClient();
+    const res = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Transactions!A1:Z' });
+    const rows = res.data.values;
+    if (!rows || rows.length <= 1) return [];
+
+    const headers = rows[0].map(h => String(h || '').toLowerCase());
+    const dataRows = rows.slice(1);
+
+    const dateIdx = headers.findIndex(h => h.includes('date'));
+    const assetIdx = headers.findIndex(h => h.includes('asset') || h.includes('symbol') || h.includes('ticker'));
+    const qtyIdx = headers.findIndex(h => h.includes('qty') || h.includes('quantity'));
+    const totalUsdIdx = headers.findIndex(h => h.includes('total_usd') || h.includes('amount') || h.includes('total spent'));
+    const typeIdx = headers.findIndex(h => h.includes('type') || h.includes('action') || h.includes('side'));
+
+    return dataRows.map(r => {
+        let isSell = false;
+        if (typeIdx !== -1 && r[typeIdx]) {
+            const actionType = String(r[typeIdx]).trim().toUpperCase();
+            if (actionType === 'SELL') {
+                isSell = true;
+            }
+        }
+        
+        let qty = cleanNum(r[qtyIdx]);
+        let totalUsd = cleanNum(r[totalUsdIdx]);
+        
+        // Ensure values are negative if it's a SELL transaction
+        if (isSell) {
+            qty = -Math.abs(qty);
+            totalUsd = -Math.abs(totalUsd);
+        }
+
+        return {
+            Date: r[dateIdx],
+            Asset: r[assetIdx],
+            Quantity: qty,
+            Total_USD: totalUsd
+        };
+    }).filter(t => t.Asset && t.Quantity !== 0);
+}
+
 export async function getRemainingBudget() {
     const gs = await getSheetsClient();
     const res = await gs.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Budget_Log!A2:D' });

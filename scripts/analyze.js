@@ -54,12 +54,12 @@ async function runRealAnalysis() {
             
             // Calculate current allocation by actual current value
             const currentAllocByValue = totalMarketValue > 0 ? (marketValues[i] / totalMarketValue) : asset.current_alloc;
-            const result = await analyze(asset, budget, fng, marketInfo, currentAllocByValue);
+            const result = await analyze(asset, budget, marketInfo, currentAllocByValue);
             preliminaryAnalysis.push(result);
         }
 
         // 3. Smart Budget Distribution & Rebalance Calculation
-        const distributedResults = distributeBudget(preliminaryAnalysis, portfolio, budget, totalMarketValue);
+        const distributedResults = distributeBudget(preliminaryAnalysis, portfolio, budget);
         const finalResults = calculateRebalance(distributedResults, totalPortfolioValue);
 
         // --- QUARTERLY REBALANCE SECTION ---
@@ -113,27 +113,24 @@ async function runRealAnalysis() {
         console.log("=".repeat(50));
         
         let totalValue = 0;
-        const buyOrders = [];
+        const buyOrders = finalResults.filter(r => r.recommend_usd > 0);
         
-        for (const r of finalResults) {
-            totalValue += r.market_value;
-            if (r.recommend_usd > 0) {
-                buyOrders.push(r);
-            }
-        }
+        finalResults.forEach(r => {
+            totalValue += (r.market_value || 0);
+        });
 
         console.log(`Total Portfolio Value: $${totalValue.toFixed(2)}`);
         console.log(`Remaining Budget:    $${budget.toFixed(2)}`);
         
-        if (buyOrders.length > 0) {
+        if (buyOrders.length > 0 && !isRebalanceMonth) {
             console.log("\n🎯 Top Buy Recommendations for today:");
             // Sort by recommend_usd descending
             buyOrders.sort((a, b) => b.recommend_usd - a.recommend_usd);
             for (const order of buyOrders) {
-                console.log(`- ${order.symbol.padEnd(6)}: Recommend $${order.recommend_usd.toString().padEnd(5)} | Score ${order.score} [${order.action}]`);
+                console.log(`- ${order.symbol.padEnd(6)}: Recommend $${order.recommend_usd.toString().padEnd(5)} [DCA Allocation]`);
             }
-        } else {
-            console.log("\n😴 No strong buy signals or budget limited. Holding cash is recommended.");
+        } else if (!isRebalanceMonth) {
+            console.log("\n😴 No buy signals or budget limited.");
         }
         console.log("=".repeat(50));
         

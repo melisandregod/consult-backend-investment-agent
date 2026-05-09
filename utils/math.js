@@ -6,6 +6,13 @@ export const toFiniteNumber = (value) => {
 
 export const cleanNum = (val) => {
     if (!val) return 0;
+    if (typeof val === 'number') return val;
+    
+    // Attempt to parse directly first (handles scientific notation like "9.79E-06")
+    const directNumber = Number(val);
+    if (!isNaN(directNumber)) return directNumber;
+
+    // Fallback: strip non-numeric characters (e.g. for "$1,234.56" or "1,000")
     const cleaned = String(val).replace(/[^0-9.-]+/g, "");
     return parseFloat(cleaned) || 0;
 };
