@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ override: true });
 
 export const PORT = parseInt(process.env.PORT || '3001', 10);
 export const SPREADSHEET_ID = process.env.SPREADSHEET_ID;

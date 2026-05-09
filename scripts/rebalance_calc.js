@@ -85,17 +85,19 @@ async function runRebalanceCalc() {
                 price: res.price,
                 current_alloc_pct: (res.marketValue / totalMarketValue) * 100,
                 target_alloc_pct: res.target_alloc * 100,
+                current_usd: currentUsd,
+                target_usd: targetUsd,
                 diff_usd: diffUsd,
                 action: diffUsd > 0 ? "BUY" : "SELL",
                 is_significant: isSignificant
             };
         });
 
-        console.log(`\n` + `=`.repeat(60));
+        console.log(`\n` + `=`.repeat(125));
         console.log(`REBALANCE REPORT`);
-        console.log(`=`.repeat(60));
-        console.log(`Symbol | Price    | Current % | Target % | Action      | Amount (USD)`);
-        console.log(`-------|----------|-----------|----------|-------------|-------------`);
+        console.log(`=`.repeat(125));
+        console.log(`Symbol | Price    | Current % | Target % | Current Value (USD) | Value Target (USD) | Action      | Amount (USD)`);
+        console.log(`-------|----------|-----------|----------|---------------------|--------------------|-------------|--------------`);
 
         let totalToSell = 0;
         let totalToBuy = 0;
@@ -108,20 +110,22 @@ async function runRebalanceCalc() {
                 `$${r.price.toFixed(2).padEnd(8)} | ` +
                 `${r.current_alloc_pct.toFixed(1).padStart(8)}% | ` +
                 `${r.target_alloc_pct.toFixed(1).padStart(8)}% | ` +
-                `${actionStr} | ` +
-                `$${Math.abs(r.diff_usd).toFixed(2).padStart(10)} ${sig}`
+                `$${r.current_usd.toFixed(2).padStart(19)} | ` +
+                `$${r.target_usd.toFixed(2).padStart(18)} | ` +
+                `${actionStr.padEnd(11)} | ` +
+                `$${Math.abs(r.diff_usd).toFixed(2).padStart(12)} ${sig}`
             );
 
             if (r.diff_usd < 0) totalToSell += Math.abs(r.diff_usd);
             else totalToBuy += r.diff_usd;
         });
 
-        console.log(`-`.repeat(60));
+        console.log(`-`.repeat(125));
         console.log(`Total Portfolio Value: $${totalPortfolioValue.toFixed(2)}`);
         console.log(`Total to Sell:         $${totalToSell.toFixed(2)}`);
         console.log(`Total to Buy:          $${totalToBuy.toFixed(2)}`);
         console.log(`Cash needed/surplus:   $${(totalToBuy - totalToSell - budget).toFixed(2)}`);
-        console.log(`=`.repeat(60));
+        console.log(`=`.repeat(125));
         console.log(`⚠️  = Deviation > 5% of target amount`);
     } catch (error) {
         console.error(`❌ Error calculating rebalance:`, error.message);

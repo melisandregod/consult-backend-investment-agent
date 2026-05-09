@@ -19,8 +19,7 @@ THAI_FONT_PATH = '/System/Library/Fonts/Supplemental/Sathu.ttf' # Default macOS 
 # Asset types mapping (Updated with new chips)
 ASSET_TYPES = {
     'AAPL': 'STOCK', 'AMZN': 'STOCK', 'BTC': 'CRYPTO', 'GOOGL': 'STOCK',
-    'MSFT': 'STOCK', 'NVDA': 'STOCK', 'TSLA': 'STOCK', 'TSM': 'STOCK',
-    'AMD': 'STOCK', 'ARM': 'STOCK', 'INTC': 'STOCK'
+    'MSFT': 'STOCK', 'NVDA': 'STOCK', 'TSLA': 'STOCK', 'TSM': 'STOCK'
 }
 
 # Month translation

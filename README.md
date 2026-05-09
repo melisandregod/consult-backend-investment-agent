@@ -102,16 +102,11 @@ This section explains the indicators and scoring logic used by the analyzer.
 - RSI < 50: Weak momentum
 
 ### 4) EMA200
-- `%diff = (price - ema200) / ema200 * 100`
+- %diff = (price - ema200) / ema200 * 100
 
 ### 5) Volume Shock (20 days)
 - `volumeShockPct = (lastVol - avg20) / avg20 * 100`
 
-### 6) Scoring & Actions
-- `score >= 85` → STRONG_BUY
-- `score >= 60` → BUY
-- `score >= 40` → ACCUMULATE
-- below 40 → WAIT
 
 ---
 *For more details on the validated investment strategy, see [PLAN.md](./PLAN.md).*

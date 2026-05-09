@@ -140,38 +140,20 @@ async function runRebalanceBacktest() {
                     console.warn(`⚠️ Warning: Financial leak at ${date.toISOString().split('T')[0]}. Gap: $${(portfolioValueAfter - portfolioValueBefore).toFixed(4)}`);
                 }
             } else {
-                // HYBRID DCA LOGIC (Smart DCA / Selective Buy)
+                // FIXED TARGET DCA LOGIC (Blind DCA)
                 const analysisResults = [];
                 for (const asset of assets) {
-                    const history = assetHistories[asset.symbol];
-                    const slice = history?.filter(h => new Date(h.date) <= date);
-                    if (!slice || slice.length < 200) continue;
-
                     const price = currentPrices[asset.symbol];
-                    const closes = extractCloseSeries(slice);
                     const current_alloc = portfolioValueBefore > 0 ? (holdings[asset.symbol].qty * price) / portfolioValueBefore : 0;
                     
-                    const decision = computeDecision({
-                        price,
-                        closes,
-                        avg_cost: holdings[asset.symbol].avg_cost,
-                        current_alloc,
-                        target_alloc: asset.target_alloc,
-                        fng: 50,
-                        budget: monthlyBudget, 
-                        history: slice
-                    });
-
                     analysisResults.push({
                         symbol: asset.symbol,
                         price,
-                        score: decision.score,
-                        action: decision.action,
                         allocation_current_pct: current_alloc * 100
                     });
                 }
 
-                const distributedResults = distributeBudget(analysisResults, assets, cash, portfolioValueBefore);
+                const distributedResults = distributeBudget(analysisResults, assets, cash);
                 for (const res of distributedResults) {
                     if (res.recommend_usd > 0) {
                         const buyUsd = res.recommend_usd;

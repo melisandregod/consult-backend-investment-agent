@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function runRealAnalysis() {
-    console.log("🚀 Starting real-world analysis...");
+    console.log("🚀 Fetching DCA & Portfolio Status...");
     
     try {
         const [portfolio, budget] = await Promise.all([
@@ -109,7 +109,7 @@ async function runRealAnalysis() {
 
         // --- FINAL SUMMARY ---
         console.log("\n" + "=".repeat(50));
-        console.log("📈 INVESTMENT SUMMARY REPORT");
+        console.log("📈 DCA RECOMMENDATION REPORT");
         console.log("=".repeat(50));
         
         let totalValue = 0;

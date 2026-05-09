@@ -2,12 +2,12 @@ import { yahooFinance } from '../../config/yahooFinance.js';
 import { RSI, EMA } from 'technicalindicators';
 
 async function compareChips() {
-    const symbols = ['NVDA', 'AMD', 'ARM', 'INTC'];
+    const symbols = ['NVDA'];
     const now = new Date();
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(now.getFullYear() - 1);
 
-    console.log("📊 Quick Comparison: AMD vs ARM vs INTC vs NVDA (Last 1 Year)");
+    console.log("📊 Quick Comparison: NVDA (Last 1 Year)");
     console.log("=".repeat(60));
 
     for (const symbol of symbols) {
@@ -35,13 +35,7 @@ async function compareChips() {
             const currentEma200 = ema200Arr[ema200Arr.length - 1];
             const price = result[result.length - 1].close;
 
-            // Score logic from ultimate_comparison.js
-            let score = 50;
-            if (price < currentEma200) score += 15;
-            if (currentRsi < 30) score += 15;
-            else if (currentRsi > 70) score -= 15;
-
-            console.log(`${symbol.padEnd(5)} | Return: ${returnPct.toFixed(2).padStart(7)}% | RSI: ${currentRsi?.toFixed(2) || 'N/A'} | Price vs EMA200: ${(price / currentEma200).toFixed(2)}x | Smart Score: ${score}`);
+            console.log(`${symbol.padEnd(5)} | Return: ${returnPct.toFixed(2).padStart(7)}% | RSI: ${currentRsi?.toFixed(2) || 'N/A'} | Price vs EMA200: ${(price / currentEma200).toFixed(2)}x`);
         } catch (e) {
             console.log(`${symbol}: Error fetching data - ${e.message}`);
         }

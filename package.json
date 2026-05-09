@@ -6,8 +6,9 @@
   "scripts": {
     "start": "nodemon server.js",
     "dev": "nodemon server.js",
-    "analyze": "node scripts/analyze.js",
+    "dca": "node scripts/analyze.js",
     "rebalance": "node scripts/rebalance_calc.js",
+    "strategy:monday": "node scripts/research/monday_arm_strategy.js",
     "backtest": "node scripts/backtest/backtest_dca.js",
     "backtest:blind": "node scripts/backtest/backtest_blind_dca.js",
     "backtest:fixed": "node scripts/backtest/backtest_fixed_30_70.js",

@@ -1,24 +1,20 @@
-# Investment Strategy Plan: Selective Buy DCA 2.0 (Smart Distribution)
+# Investment Strategy Plan: Fixed Target DCA (Balance Distribution)
 
 ## 🎯 Objective
-To achieve maximum risk-adjusted returns using an AI-driven "Smart DCA" strategy. The system prioritizes investments based on technical value (Score) and portfolio discipline (Target Allocation).
+To achieve consistent growth through a disciplined "Fixed Target" allocation strategy. The system prioritizes investments based on the Allocation Gap to maintain the desired portfolio balance.
 
-## 📈 Validated Strategy: Smart Distribution 2.0
-The strategy uses a **Priority Index** to allocate funds:
-`Priority = Score * Max(0, Allocation Gap USD)`
+## 📈 Strategy: Fixed Allocation DCA
+The strategy uses an **Allocation Gap** to allocate funds:
+`Priority = Target Allocation % - Current Allocation %`
 
-This ensures we aggressively buy assets that are both **undervalued** and **underweight** in the portfolio.
+This ensures we buy assets that are currently **underweight** in the portfolio relative to their target.
 
 ### Core Principles
 1.  **DCA Frequency:** Monthly (Standard execution on the 27th).
 2.  **Budget:** $300 USD per month (Dynamic adjustment based on Google Sheets).
-3.  **Selective Entry (Score-based):**
-    *   **Score >= 60 (STRONG_BUY/BUY):** High priority for budget allocation.
-    *   **Score >= 40 (ACCUMULATE):** Eligible for allocation if budget permits.
-    *   **Score < 40 (WAIT):** Hold budget as cash for future opportunities.
-4.  **Portfolio Discipline:**
-    *   No new money is allocated to assets exceeding their **Target Allocation**.
+3.  **Automatic Allocation:**
     *   Budget is concentrated into assets with the largest **Allocation Gaps**.
+    *   No new money is allocated to assets exceeding their **Target Allocation**.
 
 ## 📊 Backtest Performance (5-Year Selective DCA)
 *Data based on May 2021 - May 2026*
@@ -47,13 +43,14 @@ npm run backtest
 | Type | Asset | Target % | Role |
 | :--- | :--- | :--- | :--- |
 | Crypto | BTC | 30.0% | High-Growth Core |
-| Stock | NVDA | 7.0% | Tech Momentum |
-| Stock | AAPL | 7.0% | Stability/Growth |
-| Stock | MSFT | 7.0% | Enterprise Core |
-| Stock | AMD | 7.0% | Tech Momentum (New) |
-| Stock | ARM | 7.0% | Tech Infrastructure (New) |
-| Stock | INTC | 7.0% | Value Recovery (New) |
-| Stock | ... | 7.0% | Diversification (10 Stocks Total) |
+| Stock | NVDA | 10.0% | Tech Momentum |
+| Stock | AAPL | 10.0% | Stability/Growth |
+| Stock | MSFT | 10.0% | Enterprise Core |
+| Stock | AMZN | 10.0% | E-commerce/Cloud |
+| Stock | GOOGL| 10.0% | Ad/Cloud/AI |
+| Stock | TSLA | 10.0% | EV/Energy |
+| Stock | TSM  | 10.0% | Semiconductor Foundry |
+| **Total** | **7 Stocks** | **70.0%** | **Equity Basket** |
 
 ---
 *Last Updated: May 4, 2026 (Logic Unified: API & Backtest v2.0)*
