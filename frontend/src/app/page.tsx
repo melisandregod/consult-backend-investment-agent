@@ -202,35 +202,70 @@ function ActionPlanView({ data, showThb }: { data: SummaryData, showThb: boolean
       {data.is_rebalance_month && (
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-             <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">System Correction Table</h3>
+             <div className="flex items-center gap-2">
+               <RefreshCw className="w-4 h-4 text-purple-600" />
+               <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">System Correction Table</h3>
+             </div>
              <span className="text-[10px] font-bold text-slate-400 italic">Syncing Port...</span>
           </div>
-          <div className="bg-white rounded-3xl border border-slate-200 divide-y divide-slate-100 overflow-hidden shadow-sm">
-            {data.analysis.map((asset) => (
-              <div key={asset.symbol} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-[10px] text-slate-600">
-                     {asset.symbol.substring(0, 2)}
-                   </div>
-                   <div>
-                     <p className="text-xs font-black text-slate-800">{asset.symbol}</p>
-                     <p className="text-[9px] font-bold text-slate-400">TARGET: {asset.allocation_target_pct}%</p>
-                   </div>
-                </div>
-                <div className="text-right">
-                  <div className={cn(
-                    "text-xs font-black flex items-center justify-end gap-1",
-                    asset.rebalance_action === 'SELL' ? "text-purple-600" : "text-emerald-600"
-                  )}>
-                    {asset.rebalance_action === 'SELL' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-                    {asset.rebalance_action} {showThb ? `฿${Math.abs(asset.rebalance_diff_thb).toLocaleString()}` : `$${Math.abs(asset.rebalance_diff_usd).toLocaleString()}`}
-                  </div>
-                  {asset.is_rebalance_significant && (
-                    <span className="text-[8px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded uppercase tracking-tighter">🚨 Significant Drift</span>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                    <th className="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset</th>
+                    <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Target</th>
+                    <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                    <th className="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {data.analysis.map((asset) => (
+                    <tr key={asset.symbol} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="py-4 px-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-[10px] text-slate-600 group-hover:bg-white transition-colors">
+                            {asset.symbol.substring(0, 2)}
+                          </div>
+                          <span className="text-xs font-black text-slate-800">{asset.symbol}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
+                          {asset.allocation_target_pct}%
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className={cn(
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                          asset.rebalance_action === 'SELL' 
+                            ? "bg-purple-50 text-purple-600 ring-1 ring-purple-100" 
+                            : "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100"
+                        )}>
+                          {asset.rebalance_action === 'SELL' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                          {asset.rebalance_action}
+                        </div>
+                      </td>
+                      <td className="py-4 px-5 text-right">
+                        <div className="flex flex-col items-end">
+                          <span className={cn(
+                            "text-xs font-black",
+                            asset.rebalance_action === 'SELL' ? "text-purple-700" : "text-emerald-700"
+                          )}>
+                            {showThb ? `฿${Math.abs(asset.rebalance_diff_thb).toLocaleString()}` : `$${Math.abs(asset.rebalance_diff_usd).toLocaleString()}`}
+                          </span>
+                          {asset.is_rebalance_significant && (
+                            <span className="text-[7px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-sm uppercase tracking-tighter mt-1">
+                              🚨 Drift Limit
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

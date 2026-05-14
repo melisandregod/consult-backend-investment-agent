@@ -121,3 +121,39 @@ export async function getRemainingBudget() {
     // Get the last valid numeric entry
     return cleanNum(validRows[validRows.length - 1][3]);
 }
+
+export async function getMonthlySpending() {
+    try {
+        const transactions = await getTransactions();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const spending = {};
+
+        transactions.forEach(t => {
+            if (!t.Date || !t.Asset) return;
+            
+            // Handle different date formats (DD/MM/YYYY or MM/DD/YYYY)
+            // For simplicity, we try to parse it. 
+            // If the sheet uses a consistent format that JS can't parse directly, 
+            // we might need more robust parsing.
+            const tDate = new Date(t.Date);
+            
+            // Check if date is valid and in current month
+            if (!isNaN(tDate.getTime()) && 
+                tDate.getMonth() === currentMonth && 
+                tDate.getFullYear() === currentYear) {
+                
+                const symbol = t.Asset.toUpperCase();
+                spending[symbol] = (spending[symbol] || 0) + (t.Total_USD || 0);
+            }
+        });
+
+        return spending;
+    } catch (error) {
+        console.error("⚠️ Error fetching monthly spending:", error.message);
+        return {};
+    }
+}
+

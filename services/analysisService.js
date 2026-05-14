@@ -63,9 +63,14 @@ export async function analyze(asset, budget, marketInfo = null, currentAllocOver
 
 /**
  * Strictly distributes budget based on target weights.
+ * Now accounts for monthly spending to "lock" portions already used.
  */
-export function distributeBudget(analysisResults, portfolio, budget) {
+export function distributeBudget(analysisResults, portfolio, budget, monthlySpending = {}) {
     if (budget <= 0) return analysisResults.map(r => ({ ...r, recommend_usd: 0 }));
+
+    // Calculate total effective budget (Remaining + already spent this month)
+    const totalSpentThisMonth = Object.values(monthlySpending).reduce((sum, v) => sum + v, 0);
+    const totalEffectiveBudget = budget + totalSpentThisMonth;
 
     const totalTargetWeight = portfolio.reduce((sum, a) => sum + (a.target_alloc || 0), 0);
 
@@ -73,8 +78,20 @@ export function distributeBudget(analysisResults, portfolio, budget) {
         const asset = portfolio.find(a => a.symbol === analysis.symbol);
         if (!asset || totalTargetWeight <= 0) return { ...analysis, recommend_usd: 0 };
 
-        const recommend_usd = Math.round(budget * (asset.target_alloc / totalTargetWeight));
+        // Target for this asset based on total monthly budget
+        const target_usd = totalEffectiveBudget * (asset.target_alloc / totalTargetWeight);
+        
+        // Subtract what was already spent this month
+        const spent_usd = monthlySpending[asset.symbol.toUpperCase()] || 0;
+        let recommend_usd = Math.max(0, Math.round(target_usd - spent_usd));
 
-        return { ...analysis, recommend_usd };
+        return { 
+            ...analysis, 
+            recommend_usd,
+            dca_target_usd: Math.round(target_usd),
+            dca_spent_usd: Math.round(spent_usd)
+        };
     });
 }
+
+
